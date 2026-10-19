@@ -5,9 +5,10 @@ Feature: ee dash init site sync
     Given an EasyDash stub is running
     And the EasyDash stub knows the server '203.0.113.10'
 
+  # --hostname is the machine name, so the payload is the same with and without the DASH-1 fix.
   Scenario: An HTML site with self-signed SSL is posted with its details
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname={HOSTNAME}" in the EasyDash sandbox
     Then the return code should be 0
     And STDOUT should contain:
       """

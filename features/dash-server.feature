@@ -28,8 +28,9 @@ Feature: ee dash init server registration
       {"organization": "bh-dash-org"}
       """
 
+  # --hostname is the machine name, so the payload is the same with and without the DASH-1 fix.
   Scenario: A new server is registered, the EasyEngine key is authorised and the run stops there
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname={HOSTNAME}" in the EasyDash sandbox
     Then the return code should be 0
     And STDOUT should contain:
       """
