@@ -118,15 +118,32 @@ Feature: ee dash command surface and argument validation
       """
     And the EasyDash stub should not have received any request
 
-  # DASH-2: a bare `--api` becomes `true`, which trim() turns into the key "1", so the run goes on and calls the API.
-  @known-bug
+  # The synopsis validator drops a valueless `--api`/`--org` (with a warning) before init() sees it.
   Scenario: init with --api but no value is rejected
     Given an EasyDash stub is running
     When I run "bin/ee dash init --api --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 1
     And STDERR should contain:
       """
+      --api parameter needs a value
+      """
+    And STDERR should contain:
+      """
       Please provide an EasyDash API key
+      """
+    And the EasyDash stub should not have received any request
+
+  Scenario: init with --org but no value is rejected
+    Given an EasyDash stub is running
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
+    Then the return code should be 1
+    And STDERR should contain:
+      """
+      --org parameter needs a value
+      """
+    And STDERR should contain:
+      """
+      Please provide an EasyDash organization name
       """
     And the EasyDash stub should not have received any request
 

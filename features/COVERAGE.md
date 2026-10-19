@@ -36,7 +36,7 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 | `ee dash` (namespace help, usage) | ✔ dash: "ee help dash describes…", "ee dash without a subcommand…" |
 | Unknown subcommand | ✔ dash: "An unknown dash subcommand is rejected" |
 | `ee dash init` help/synopsis | ✔ dash: "ee help dash init documents every option"; KB DASH-9 (example lacks `--org`) |
-| `--api=<api-key>` required, trimmed, sent as `Token` header | ✔ dash: missing / whitespace-only; dash-server: "Option values are trimmed", header checks on every endpoint; KB DASH-2 (bare `--api`) |
+| `--api=<api-key>` required, trimmed, sent as `Token` header | ✔ dash: missing / whitespace-only; dash-server: "Option values are trimmed", header checks on every endpoint; bare `--api` / `--org` rejected (DASH-2 refuted) |
 | `--org=<org-name>` required, trimmed, sent in every body | ✔ dash: missing / whitespace-only; dash-server: trimmed, lookup body; dash-sites: `organization` field |
 | `--ip=<ip-address>` | ✔ dash-server: payload `public_ipv4`, trimmed, server match by IP; KB DASH-13 (not validated) |
 | `--ip` omitted → `api.ipify.org` lookup | ✔ dash-server: "Without --ip the public IP is looked up at api.ipify.org…" (the proxy guard makes it fail locally) |
@@ -128,10 +128,10 @@ Regular scenarios assert only behaviour that should survive the bug fixes; the c
 
 | Feature | Scenarios | `@known-bug` |
 |---|---|---|
-| dash.feature | 18 | 4 |
+| dash.feature | 19 | 3 |
 | dash-server.feature | 30 | 10 |
 | dash-sites.feature | 22 | 4 |
-| **Total** | **70** | **18** |
+| **Total** | **71** | **17** |
 
 No `@le`, `@remote` or `@destructive` scenarios. Run without the known bugs: `vendor/bin/behat --tags='~@known-bug'`.
 
@@ -140,7 +140,7 @@ No `@le`, `@remote` or `@destructive` scenarios. Run without the known bugs: `ve
 | ID | Location (`src/Dash_Command.php`) | Issue | Scenario |
 |---|---|---|---|
 | DASH-1 | `init()` L89–95 | `--hostname` is validated, then overwritten by `gethostname()`; EasyDash always gets the machine hostname. | KB |
-| DASH-2 | `init()` L52–63 | A bare `--api` (or `--org`) is `true`, `trim(true)` is `"1"`, so validation passes and the API is called with token `1`. | KB |
+| DASH-2 | `init()` L52–63 | Refuted on CI: `SynopsisValidator` warns "--api parameter needs a value" and unsets a valueless `--api`/`--org` before `init()` runs, so the empty-value check fires. | regular scenarios (bare `--api`, bare `--org`) |
 | DASH-3 | `init()` L109–115 | The FQDN prompt loops forever when STDIN is closed (`EE::input()` returns `""` on EOF), flooding warnings. Any non-interactive run without a valid `--hostname` hits it, since the confirmation also reads EOF as "no" (e.g. EasyDash firing init over SSH without `--hostname`). | KB |
 | DASH-4 | all `try/catch (\RuntimeException)` blocks | `http_request()` defaults to `halt_on_error`, so transport errors call `EE::error()` inside it; the transport-error fallbacks ("assume the server doesn't exist", `get_external_ip()` → IP prompt) and the "Error connecting to EasyDash API…" messages are dead code. | KB (API lookup, IP lookup) |
 | DASH-5 | `init()` L127–130 | The EasyDash root SSH key is appended before `add_server` and stays authorised when registration fails. `/root/.ssh` is hard-coded and a missing dir fails silently. | KB |
