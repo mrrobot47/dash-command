@@ -431,12 +431,25 @@ class FeatureContext implements Context
 	 */
 	public static function testSitesInDb()
 	{
+		return self::sitesInDb( 'LIKE' );
+	}
+
+	/**
+	 * @return string[] Sites in the EE database that don't belong to this suite.
+	 */
+	public static function nonTestSitesInDb()
+	{
+		return self::sitesInDb( 'NOT LIKE' );
+	}
+
+	private static function sitesInDb( $operator )
+	{
 		$db_file = EE_ROOT_DIR . '/db/ee.sqlite';
 		if ( ! file_exists( $db_file ) ) {
 			return [];
 		}
 		$pdo  = new PDO( 'sqlite:' . $db_file );
-		$stmt = $pdo->prepare( "SELECT site_url FROM sites WHERE site_url LIKE ? ESCAPE '\\'" );
+		$stmt = $pdo->prepare( "SELECT site_url FROM sites WHERE site_url $operator ? ESCAPE '\\'" );
 		$stmt->execute( [ str_replace( [ '_', '%' ], [ '\\_', '\\%' ], self::TEST_SITE_PREFIX ) . '%' ] );
 
 		return $stmt->fetchAll( PDO::FETCH_COLUMN );
@@ -577,7 +590,7 @@ class FeatureContext implements Context
 	{
 		$path = $this->expand( $path );
 		if ( ! is_readable( $path ) ) {
-			return;
+			throw new Exception( "File $path is not readable." );
 		}
 		$lines = preg_grep( '/' . preg_quote( $this->expand( $text ), '/' ) . '/', file( $path ) );
 		if ( $lines ) {
@@ -625,12 +638,19 @@ class FeatureContext implements Context
 		if ( ! preg_match( '/^[a-z_]+$/', $column ) ) {
 			throw new Exception( "Invalid column name: $column" );
 		}
-		$pdo  = new PDO( 'sqlite:' . EE_ROOT_DIR . '/db/ee.sqlite' );
-		$stmt = $pdo->prepare( "UPDATE sites SET $column = ? WHERE site_url = ?" );
+		$pdo    = new PDO( 'sqlite:' . EE_ROOT_DIR . '/db/ee.sqlite' );
+		$select = $pdo->prepare( "SELECT $column FROM sites WHERE site_url = ?" );
+		$select->execute( [ $site ] );
+		$original = $select->fetchColumn();
+		$stmt     = $pdo->prepare( "UPDATE sites SET $column = ? WHERE site_url = ?" );
 		$stmt->execute( [ $value, $site ] );
 		if ( 1 !== $stmt->rowCount() ) {
 			throw new Exception( "Site $site not found in the EasyEngine database." );
 		}
+		$this->undo[] = function () use ( $column, $original, $site ) {
+			$pdo = new PDO( 'sqlite:' . EE_ROOT_DIR . '/db/ee.sqlite' );
+			$pdo->prepare( "UPDATE sites SET $column = ? WHERE site_url = ?" )->execute( [ $original, $site ] );
+		};
 	}
 
 	/**
@@ -668,6 +688,40 @@ class FeatureContext implements Context
 		if ( ! rename( $root . $from, $root . $to ) ) {
 			throw new Exception( "Could not move {$root}{$from} to {$root}{$to}." );
 		}
+		$this->undo[] = function () use ( $root, $from, $to ) {
+			if ( file_exists( $root . $to ) && ! file_exists( $root . $from ) ) {
+				rename( $root . $to, $root . $from );
+			}
+		};
+	}
+
+	/**
+	 * @var callable[] Fixture changes to revert after the scenario, even when it fails.
+	 */
+	private $undo = [];
+
+	/**
+	 * Registers a command that reverts a fixture change after the scenario (pass or fail); its failure is ignored.
+	 *
+	 * @Given the command :command is run after the scenario
+	 */
+	public function theCommandIsRunAfterTheScenario( $command )
+	{
+		$command      = $this->expand( $command );
+		$this->undo[] = function () use ( $command ) {
+			EE::launch( $command . ' < /dev/null', false, true );
+		};
+	}
+
+	/**
+	 * @AfterScenario
+	 */
+	public function revertFixtureChanges()
+	{
+		while ( $this->undo ) {
+			$revert = array_pop( $this->undo );
+			$revert();
+		}
 	}
 
 	/*
@@ -704,6 +758,10 @@ class FeatureContext implements Context
 			if ( 0 !== $rc ) {
 				throw new Exception( "The EasyDash sandbox needs `$bin`." );
 			}
+		}
+		// The proxy guard in runInSandbox() only binds the curl transport; Requests' fsockopen fallback ignores proxy env vars.
+		if ( ! extension_loaded( 'curl' ) ) {
+			throw new Exception( 'The EasyDash sandbox needs the PHP curl extension.' );
 		}
 
 		$dir = rtrim( sys_get_temp_dir(), '/' ) . '/ee-behat-dash-' . $this->placeholders['RUN_ID'];
@@ -758,11 +816,12 @@ class FeatureContext implements Context
 			}
 		}
 		$sandbox = "#!/bin/sh\n# Runs inside a private mount namespace; the bind mounts are invisible to the host.\n";
-		$sandbox .= sprintf( "mount --bind %s /root/.ssh || { echo 'EasyDash sandbox: cannot bind-mount /root/.ssh' >&2; exit %d; }\n", escapeshellarg( "$dir/ssh" ), self::SANDBOX_SETUP_FAILED );
+		$sandbox .= sprintf( "mount --bind %1\$s /root/.ssh && [ /root/.ssh -ef %1\$s ] || { echo 'EasyDash sandbox: cannot bind-mount /root/.ssh' >&2; exit %2\$d; }\n", escapeshellarg( "$dir/ssh" ), self::SANDBOX_SETUP_FAILED );
 		foreach ( array_keys( $targets ) as $target ) {
-			$sandbox .= sprintf( "mount --bind %s %s || { echo 'EasyDash sandbox: cannot shadow %s' >&2; exit %d; }\n", escapeshellarg( "$dir/bin/hostnamectl" ), escapeshellarg( $target ), $target, self::SANDBOX_SETUP_FAILED );
+			$sandbox .= sprintf( "mount --bind %1\$s %2\$s && [ %2\$s -ef %1\$s ] || { echo 'EasyDash sandbox: cannot shadow %3\$s' >&2; exit %4\$d; }\n", escapeshellarg( "$dir/bin/hostnamectl" ), escapeshellarg( $target ), $target, self::SANDBOX_SETUP_FAILED );
 		}
-		$sandbox .= sprintf( "cd %s\nexec sh %s\n", escapeshellarg( realpath( EE_ROOT ) ), escapeshellarg( "$dir/cmd.sh" ) );
+		// The marker proves the mounts are in place; without it (e.g. unshare itself failed) the run is not trusted.
+		$sandbox .= sprintf( ": > %s\ncd %s\nexec sh %s\n", escapeshellarg( "$dir/sandbox.entered" ), escapeshellarg( realpath( EE_ROOT ) ), escapeshellarg( "$dir/cmd.sh" ) );
 		file_put_contents( "$dir/sandbox.sh", $sandbox );
 	}
 
@@ -807,7 +866,10 @@ class FeatureContext implements Context
 	 */
 	private function writeStubConfig( $api_url )
 	{
-		$dir    = $this->requireStub();
+		$dir = $this->requireStub();
+		if ( '127.0.0.1' !== parse_url( $api_url, PHP_URL_HOST ) ) {
+			throw new Exception( "Refusing ed-api-url $api_url: sandboxed runs may only reach 127.0.0.1." );
+		}
 		$global = EE_ROOT_DIR . '/config/config.yml';
 		$lines  = is_readable( $global ) ? file( $global, FILE_IGNORE_NEW_LINES ) : [];
 		$lines  = array_filter(
@@ -818,6 +880,12 @@ class FeatureContext implements Context
 		);
 		$lines[] = 'ed-api-url: "' . addcslashes( $api_url, '"\\' ) . '"';
 		file_put_contents( "$dir/config.yml", implode( "\n", $lines ) . "\n" );
+
+		// An unparsable value would make init fall back to the real https://dash.easyengine.io.
+		$parsed = Mustangostang\Spyc::YAMLLoad( "$dir/config.yml" );
+		if ( ! isset( $parsed['ed-api-url'] ) || $api_url !== $parsed['ed-api-url'] ) {
+			throw new Exception( "The private config does not resolve ed-api-url to $api_url:\n" . file_get_contents( "$dir/config.yml" ) );
+		}
 	}
 
 	private function updateStubJson( $file, callable $change )
@@ -936,22 +1004,32 @@ class FeatureContext implements Context
 	private function runInSandbox( $command, $stdin )
 	{
 		$dir = $this->requireStub();
+		// init walks every site (enable/disable, ee shell, add_site), so it must never run next to real sites.
+		$foreign = self::nonTestSitesInDb();
+		if ( $foreign ) {
+			throw new Exception( 'Refusing to run ee dash init: it would also touch these non-test sites: ' . implode( ', ', $foreign ) );
+		}
 		if ( ! is_dir( '/root/.ssh' ) && ! mkdir( '/root/.ssh', 0700 ) ) {
 			throw new Exception( '/root/.ssh is missing and cannot be created as a mount point.' );
 		}
 		file_put_contents( "$dir/cmd.sh", $this->expand( $command ) . "\n" );
 		file_put_contents( "$dir/stdin", $stdin );
+		@unlink( "$dir/sandbox.entered" );
 
-		$run = EE::launch( sprintf(
-			'EE_CONFIG_PATH=%s PATH=%s timeout 900 unshare --mount --propagation private sh %s < %s',
+		// Proxy guard: any HTTP(S) request not aimed at 127.0.0.1 (the real EasyDash, api.ipify.org) fails fast on a closed port.
+		$proxy = 'http://127.0.0.1:' . $this->placeholders['CLOSED_PORT'];
+		$run   = EE::launch( sprintf(
+			'EE_CONFIG_PATH=%1$s PATH=%2$s http_proxy=%3$s https_proxy=%3$s HTTPS_PROXY=%3$s no_proxy=%4$s NO_PROXY=%4$s timeout --kill-after=10 900 unshare --mount --propagation private sh %5$s < %6$s',
 			escapeshellarg( "$dir/config.yml" ),
 			escapeshellarg( "$dir/bin:" . getenv( 'PATH' ) ),
+			escapeshellarg( $proxy ),
+			escapeshellarg( '127.0.0.1,localhost,.test' ),
 			escapeshellarg( "$dir/sandbox.sh" ),
 			escapeshellarg( "$dir/stdin" )
 		), false, true );
 
-		if ( self::SANDBOX_SETUP_FAILED === $run->return_code ) {
-			throw new Exception( "EasyDash sandbox setup failed:\n{$run->stderr}" );
+		if ( self::SANDBOX_SETUP_FAILED === $run->return_code || ! file_exists( "$dir/sandbox.entered" ) ) {
+			throw new Exception( "EasyDash sandbox setup failed (return code {$run->return_code}):\n{$run->stderr}" );
 		}
 		$run->command = $this->expand( $command );
 		$this->commands[] = $run;
