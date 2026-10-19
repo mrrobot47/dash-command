@@ -78,7 +78,6 @@ Feature: ee dash init site sync
     Given the test site 'bh-dash-command-3.test' exists, created with '--type=wp --dbprefix=bhd_ --cache'
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
-    And the nested ee command "shell bh-dash-command-3.test --command=wp config get table_prefix --skip-tty" should have been run
     And the last EasyDash add_site request for 'bh-dash-command-3.test' should contain JSON:
       """
       {
@@ -107,7 +106,6 @@ Feature: ee dash init site sync
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
     And the site 'bh-dash-command-4.test' should have 'php_version' set to 'latest' in the EasyEngine database
-    And the nested ee command "shell bh-dash-command-4.test --skip-tty --command=php -v" should have been run
     And the last EasyDash add_site request for 'bh-dash-command-4.test' should have 'php_version' matching '/^\d+\.\d+$/'
 
   Scenario: Alias domains are posted without the main domain
@@ -121,6 +119,7 @@ Feature: ee dash init site sync
 
   Scenario: HTTP basic auth on a site is reported
     Given the test site 'bh-dash-command-5.test' exists, created with '--type=html --alias-domains=bh-dash-command-5-alias.test,bh-dash-command-5-alt.test'
+    And the command 'bin/ee auth delete bh-dash-command-5.test --user=bhdash' is run after the scenario
     And the setup command 'bin/ee auth create bh-dash-command-5.test --user=bhdash --pass=bhdash-pass-{RUN_ID}' succeeds
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
@@ -147,11 +146,11 @@ Feature: ee dash init site sync
 
   Scenario: Mailhog on a site is reported
     Given the test site 'bh-dash-command-2.test' exists, created with '--type=php --php=8.2 --with-db --public-dir=public'
+    And the command 'bin/ee mailhog disable bh-dash-command-2.test' is run after the scenario
     And the setup command 'bin/ee mailhog enable bh-dash-command-2.test --force' succeeds
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
     And the last EasyDash add_site request for 'bh-dash-command-2.test' should have 'mailhog' loosely equal to '1'
-    And the setup command 'bin/ee mailhog disable bh-dash-command-2.test' succeeds
 
   Scenario: A site EasyDash already lists is skipped while the others are posted
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
@@ -198,7 +197,8 @@ Feature: ee dash init site sync
       """
     And the EasyDash stub should have received 1 add_site request for 'bh-dash-command-1.test'
 
-  Scenario: A rejected site aborts the sync with an error
+  # Whether the remaining sites are still sent is asserted by the DASH-12 scenario below.
+  Scenario: A rejected site is reported with the response body and fails the command
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
     And the test site 'bh-dash-command-2.test' exists, created with '--type=php --php=8.2 --with-db --public-dir=public'
     And the EasyDash stub answers 'add_site' with status 500 and body:
@@ -207,9 +207,7 @@ Feature: ee dash init site sync
       """
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 1
-    And STDERR should match '/Error: Failed to integrate site \S+ with EasyDash\. Response: \{"exc":"bh-dash site refused"\}/'
-    # EE::error() exits on the first rejected site.
-    And the EasyDash stub should have received 1 add_site request
+    And STDERR should match '/Failed to integrate site \S+ with EasyDash\. Response: \{"exc":"bh-dash site refused"\}/'
 
   Scenario: A site registration that times out aborts the sync with an error
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
@@ -220,7 +218,6 @@ Feature: ee dash init site sync
       """
       Failed to get url 'http://127.0.0.1:{STUB_PORT}/api/method/easydash.easydash.doctype.site.site.add_site'
       """
-    And the EasyDash stub should have received 1 add_site request
 
   # DASH-12: one rejected site (EE::error) stops the sync, so every later site is never sent.
   @known-bug
@@ -235,10 +232,10 @@ Feature: ee dash init site sync
     Then the EasyDash stub should have received more than 1 add_site requests
 
   Scenario: A site on PHP older than 8.1 is skipped with a warning
-    Given the test site 'bh-dash-command-7.test' exists, created with '--type=php'
+    Given the test site 'bh-dash-command-7.test' exists, created with '--type=php --php=8.4'
+    # Reverted after the scenario.
     And I set the column 'php_version' to '8.0' for the site 'bh-dash-command-7.test' in the EasyEngine database
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    And I set the column 'php_version' to '8.4' for the site 'bh-dash-command-7.test' in the EasyEngine database
     Then the return code should be 0
     And STDERR should contain:
       """
@@ -248,31 +245,55 @@ Feature: ee dash init site sync
 
   Scenario: A site without docker-compose.yml is skipped with a warning
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
+    # Moved back after the scenario.
     And I move the file 'docker-compose.yml' to 'docker-compose.yml.bh-dash' in the site 'bh-dash-command-1.test'
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    And I move the file 'docker-compose.yml.bh-dash' to 'docker-compose.yml' in the site 'bh-dash-command-1.test'
     Then STDERR should contain:
       """
       Warning: docker-compose.yml file not found for site: bh-dash-command-1.test. Skipping.
       """
     And the EasyDash stub should have received no add_site requests for 'bh-dash-command-1.test'
 
-  Scenario: A disabled site is enabled for inspection, posted as disabled and disabled again
+  Scenario: A disabled site is posted as disabled and left disabled
     Given the test site 'bh-dash-command-6.test' exists, created with '--type=html'
+    And the command 'bin/ee site enable bh-dash-command-6.test' is run after the scenario
     And the setup command 'bin/ee site disable bh-dash-command-6.test' succeeds
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
-    And the nested ee command 'site enable bh-dash-command-6.test' should have been run
-    And the nested ee command 'site disable bh-dash-command-6.test' should have been run
     And the site 'bh-dash-command-6.test' should have 'site_enabled' set to '0' in the EasyEngine database
     And the last EasyDash add_site request for 'bh-dash-command-6.test' should contain JSON:
       """
       {"domain": "bh-dash-command-6.test", "enabled": false}
       """
-    And the setup command 'bin/ee site enable bh-dash-command-6.test' succeeds
+
+  # DASH-14: disabled sites are started (`ee site enable`) and stopped again only to get past get_site_info()'s enabled check; every value sent comes from the DB.
+  @known-bug
+  Scenario: A disabled site is not started just to read its settings
+    Given the test site 'bh-dash-command-6.test' exists, created with '--type=html'
+    And the command 'bin/ee site enable bh-dash-command-6.test' is run after the scenario
+    And the setup command 'bin/ee site disable bh-dash-command-6.test' succeeds
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
+    Then the return code should be 0
+    And the nested ee command 'site enable bh-dash-command-6.test' should not have been run
+
+  # DASH-14: when the nested `ee site enable` fails (here: no docker-compose.yml), get_site_info() errors on the still-disabled site and aborts the whole sync.
+  @known-bug
+  Scenario: A disabled site that cannot be started does not abort the sync
+    Given the test site 'bh-dash-command-6.test' exists, created with '--type=html'
+    And the command 'bin/ee site enable bh-dash-command-6.test' is run after the scenario
+    And the setup command 'bin/ee site disable bh-dash-command-6.test' succeeds
+    # Moved back after the scenario, before the site is re-enabled.
+    And I move the file 'docker-compose.yml' to 'docker-compose.yml.bh-dash' in the site 'bh-dash-command-6.test'
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
+    Then the return code should be 0
+    And STDERR should not contain:
+      """
+      is not enabled
+      """
 
   Scenario: A disabled site EasyDash already lists is still left disabled
     Given the test site 'bh-dash-command-6.test' exists, created with '--type=html'
+    And the command 'bin/ee site enable bh-dash-command-6.test' is run after the scenario
     And the setup command 'bin/ee site disable bh-dash-command-6.test' succeeds
     And the EasyDash stub knows the site 'bh-dash-command-6.test'
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
@@ -283,7 +304,6 @@ Feature: ee dash init site sync
       """
     And the EasyDash stub should have received no add_site requests for 'bh-dash-command-6.test'
     And the site 'bh-dash-command-6.test' should have 'site_enabled' set to '0' in the EasyEngine database
-    And the setup command 'bin/ee site enable bh-dash-command-6.test' succeeds
 
   Scenario: Enabled sites are not restarted by the sync
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'

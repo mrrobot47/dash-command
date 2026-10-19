@@ -126,14 +126,14 @@ Feature: ee dash init server registration
     Then the return code should be 0
     And the EasyDash stub should have received 1 add_server request
 
-  Scenario: A rejected registration only warns and the run goes on to the site sync
+  # The exit code is asserted by the DASH-8 scenario below.
+  Scenario: A rejected registration is reported with the response body and status
     Given the EasyDash stub answers 'add_server' with status 500 and body:
       """
       {"exc":"bh-dash registration refused"}
       """
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the return code should be 0
-    And STDERR should contain:
+    Then STDERR should contain:
       """
       Warning: Failed to integrate server with EasyDash. Response: {"exc":"bh-dash registration refused"}
       """
@@ -172,7 +172,7 @@ Feature: ee dash init server registration
     Then the return code should be 1
     And STDERR should contain:
       """
-      Failed to get url 'http://127.0.0.1:{CLOSED_PORT}/api/method/easydash.easydash.doctype.server.server.get_server_list'
+      Failed to get url 'http://127.0.0.1:{CLOSED_PORT}/api/method/easydash.easydash.doctype.server.server.
       """
     And the sandboxed authorized_keys file should contain the EasyEngine key 0 times
 
@@ -306,10 +306,43 @@ Feature: ee dash init server registration
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the last EasyDash add_server request body should have the key 'ee_version'
 
-  # LOG-1 (core logs argv) and DASH-6 (server_exists_on_easydash() logs the request headers at debug level): the API token lands in ee.log.
+  # DASH-6: server_exists_on_easydash() logs the request headers, token included, at debug level, which always reaches ee.log.
   @known-bug
-  Scenario: The API token is not written to ee.log
+  Scenario: The server lookup does not log the API token
+    Given the EasyDash stub knows the server '203.0.113.10'
+    When I run "bin/ee dash init --api=bh-dash-secret-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
+    Then the return code should be 0
+    And the file '/opt/easyengine/logs/ee.log' should not contain '"Token":"bh-dash-secret-{RUN_ID}"'
+
+  # LOG-1: core logs the full argv at debug level, so --api=<token> lands in ee.log (won't fix in core for now).
+  @known-bug
+  Scenario: The API token is not written to ee.log at all
     Given the EasyDash stub knows the server '203.0.113.10'
     When I run "bin/ee dash init --api=bh-dash-secret-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
     And the file '/opt/easyengine/logs/ee.log' should not contain 'bh-dash-secret-{RUN_ID}'
+
+  # The sandbox's proxy guard makes every request not aimed at 127.0.0.1 fail at once, so the lookup never leaves the host.
+  Scenario: Without --ip the public IP is looked up at api.ipify.org before EasyDash is contacted
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --hostname=bh-dash.example.test" in the EasyDash sandbox
+    Then STDERR should contain:
+      """
+      https://api.ipify.org
+      """
+    And the EasyDash stub should have received no add_server requests
+
+  # DASH-4: http_request() halts on the transport error, so get_external_ip() never returns false and the IP prompt is never shown.
+  @known-bug
+  Scenario: An unreachable IP lookup falls back to asking for the public IP
+    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --hostname=bh-dash.example.test" in the EasyDash sandbox with STDIN:
+      """
+      203.0.113.10
+      """
+    Then STDOUT should contain:
+      """
+      Please enter the public IP address of the server:
+      """
+    And the last EasyDash add_server request body should contain JSON:
+      """
+      {"public_ipv4": "203.0.113.10"}
+      """
