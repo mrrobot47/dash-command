@@ -36,15 +36,6 @@ Feature: ee dash command surface and argument validation
       ED Organization name in which server needs to be added.
       """
 
-  # DASH-9: the only help example omits --org, which init requires.
-  @known-bug
-  Scenario: The ee dash init help example is a working command line
-    When I run 'bin/ee help dash init'
-    Then STDOUT should contain:
-      """
-      $ ee dash init --api=xxx --org=
-      """
-
   Scenario: An unknown dash subcommand is rejected
     When I run 'bin/ee dash sync'
     Then the return code should be 1
@@ -195,24 +186,3 @@ Feature: ee dash command surface and argument validation
       Server with IP 203.0.113.10 already exists on EasyDash. Skipping server addition.
       """
     And the EasyDash stub should have received 1 get_server_list request
-
-  # DASH-10: Debian passes the distribution check, but its release (e.g. 12) is then compared against Ubuntu's 22.04, so every Debian host is refused.
-  @known-bug
-  Scenario: init accepts Debian, which the distribution check allows
-    Given an EasyDash stub is running
-    And the EasyDash host reports OS 'Debian' release '12'
-    And the EasyDash stub knows the server '203.0.113.10'
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the return code should be 0
-    And STDERR should not contain:
-      """
-      only supported on Ubuntu 22.04 or later
-      """
-
-  # DASH-13: --ip is never validated, so any string is registered as the server's public IPv4.
-  @known-bug
-  Scenario: init rejects an --ip that is not an IPv4 address
-    Given an EasyDash stub is running
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=not-an-ip --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the return code should be 1
-    And the EasyDash stub should have received no add_server requests

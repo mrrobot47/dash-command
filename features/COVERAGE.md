@@ -27,7 +27,7 @@ About 20–22 minutes: `dash.feature` ~1.5 min, `dash-server.feature` ~2.5 min (
 
 ## Inventory and coverage
 
-Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that fails until the bug is fixed.
+Legend: ✔ covered, ✘ not covered (reason), KB = known bug whose scenario is held back until the fix lands (not in the suite yet).
 
 ### Commands, arguments, config
 
@@ -40,7 +40,7 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 | `--org=<org-name>` required, trimmed, sent in every body | ✔ dash: missing / whitespace-only; dash-server: trimmed, lookup body; dash-sites: `organization` field |
 | `--ip=<ip-address>` | ✔ dash-server: payload `public_ipv4`, trimmed, server match by IP; KB DASH-13 (not validated) |
 | `--ip` omitted → `api.ipify.org` lookup | ✔ dash-server: "Without --ip the public IP is looked up at api.ipify.org…" (the proxy guard makes it fail locally) |
-| `--ip` omitted, lookup fails → interactive IP prompt | KB DASH-4 ("An unreachable IP lookup falls back…") |
+| `--ip` omitted, lookup fails → interactive IP prompt | ✘ not covered yet: DASH-4 (its scenario comes back with the fix) |
 | `--ip` omitted, lookup succeeds | ✘ hard-coded HTTPS URL; answering it would need TLS interception |
 | `--hostname=<hostname>` valid → no confirmation | ✔ dash-server: "A valid --hostname skips…"; KB DASH-1 (value discarded) |
 | `--hostname` invalid → confirmation prompt | ✔ dash-server: "An invalid --hostname falls back…" |
@@ -49,7 +49,7 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 | Config `ed-api-url` (via `EE_CONFIG_PATH`) | ✔ every sandboxed scenario |
 | `ed-api-url` without trailing slash | ✔ dash-server: "…without a trailing slash is normalised" |
 | `ed-api-url` under a sub-path ending in `/api/method/` | ✔ dash-server: "…under a sub-path…" |
-| `ed-api-url` not ending in `/api/method/` | KB DASH-11 |
+| `ed-api-url` not ending in `/api/method/` | ✘ not covered yet: DASH-11 (its scenario comes back with the fix) |
 | Default `ed-api-url` (`https://dash.easyengine.io`) | ✘ deliberately never contacted |
 
 ### Behaviour of `ee dash init`
@@ -58,17 +58,17 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 |---|---|
 | OS check: non-Ubuntu/Debian refused | ✔ dash: "init refuses an unsupported distribution" |
 | OS check: Ubuntu < 22.04 refused, 22.04 accepted | ✔ dash: "…older than 22.04", "…Ubuntu 22.04, the minimum…" |
-| OS check: Debian | KB DASH-10 |
+| OS check: Debian | ✘ not covered yet: DASH-10 (its scenario comes back with the fix) |
 | Hostname confirm "y" keeps `gethostname()` | ✔ dash-server: "…confirming the machine hostname keeps it" |
 | Hostname "n" → FQDN prompt loop, invalid-answer warning, lower-casing, `hostnamectl set-hostname` | ✔ dash-server: "Declining the hostname…" (hostnamectl shimmed) |
-| Hostname prompt on closed STDIN | KB DASH-3 (endless loop) |
+| Hostname prompt on closed STDIN | ✘ not covered yet: DASH-3, endless loop (its scenario comes back with the fix) |
 | `get_server_list`: POST path, headers, body | ✔ dash-server: "The server lookup posts…" |
 | Server already listed → skip registration, no SSH key | ✔ dash-server: "A server already known…" |
 | Server list with other IPs / non-2xx / non-JSON → register | ✔ dash-server: three scenarios |
 | API unreachable (connection refused) | ✔ dash-server: "An unreachable EasyDash API aborts…"; KB DASH-4 (intended warning fallback is dead code) |
 | SSH key appended to `/root/.ssh/authorized_keys`, existing lines kept, not duplicated | ✔ dash-server: three scenarios (sandboxed file) |
 | `add_server`: POST path, headers, payload (`hostname`, `public_ipv4`, `organization`) | ✔ dash-server: "A new server is registered…" |
-| `add_server` payload `ee_version` | KB REL-4 (only on `main`) |
+| `add_server` payload `ee_version` | ✘ not covered yet: REL-4, only on `main` (its scenario comes back with the fix) |
 | Successful registration exits 0 before the site sync | ✔ dash-server: "A new server is registered…" (no `get_site_list`/`add_site`) |
 | Idempotency (second run skips registration) | ✔ dash-server: "Running init twice…" |
 | `add_server` non-2xx → warnings (body, status), continue | ✔ dash-server: "A rejected registration only warns…"; KB DASH-5 (key left), KB DASH-8 (sync continues, exit 0) |
@@ -83,8 +83,8 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 | `add_site` non-2xx → error, abort | ✔ dash-sites: "A rejected site aborts…"; KB DASH-12 (remaining sites skipped) |
 | `add_site` timeout | ✔ dash-sites: "A site registration that times out…" |
 | Disabled site: posted with `enabled: false`, left disabled | ✔ dash-sites: two disabled-site scenarios (payload, DB `site_enabled`) |
-| Disabled site started only to read DB values | KB DASH-14 ("A disabled site is not started…") |
-| Disabled site that can't be started aborts the sync | KB DASH-14 ("A disabled site that cannot be started…", `docker-compose.yml` moved away) |
+| Disabled site started only to read DB values | ✘ not covered yet: DASH-14 (its scenario comes back with the fix) |
+| Disabled site that can't be started aborts the sync | ✘ not covered yet: DASH-14 (its scenario comes back with the fix) |
 | Enabled sites aren't restarted | ✔ dash-sites: "Enabled sites are not restarted by the sync" |
 | Missing `docker-compose.yml` → warning, skip | ✔ dash-sites: "A site without docker-compose.yml…" |
 | `get_site_info()` empty → warning | ✘ unreachable: `get_site_info()` exits on a missing site (DASH-17) |
@@ -120,20 +120,20 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 | API token not written to `ee.log` at all | regular: LOG-1 (argv logging in core), fixed in v4.13.2 |
 | HTTP auth password not printed by the "Existing auths" log line | ✔ HTTP auth scenario (models serialise to `{}`, so nothing leaks today) |
 
-**Estimate:** 65 of the 71 inventory rows are exercised (≈92%); 9 of them only through `@known-bug` scenarios that fail until the bug is fixed, and several covered rows carry an extra KB check. The 6 uncovered rows (plus multisite `subdom`) are listed above with reasons.
+**Estimate:** 58 of the 71 inventory rows are exercised (≈82%). 7 more only have known-bug scenarios, which come back with their fixes, and several covered rows have an extra KB check waiting the same way. The 6 other uncovered rows (plus multisite `subdom`) are listed above with reasons.
 
-Regular scenarios assert only behaviour that should survive the bug fixes; the current buggy behaviour (exit 0 after a failed registration, the sync stopping at the first rejected site, disabled sites being started, nested plain `ee` calls) lives only in the `@known-bug` scenarios.
+Regular scenarios assert only behaviour that should survive the bug fixes; the current buggy behaviour (exit 0 after a failed registration, the sync stopping at the first rejected site, disabled sites being started, nested plain `ee` calls) is only checked by the held-back known-bug scenarios.
 
 ## Scenario counts
 
-| Feature | Scenarios | `@known-bug` |
-|---|---|---|
-| dash.feature | 19 | 3 |
-| dash-server.feature | 30 | 10 |
-| dash-sites.feature | 22 | 4 |
-| **Total** | **71** | **17** |
+| Feature | Scenarios |
+|---|---|
+| dash.feature | 16 |
+| dash-server.feature | 22 |
+| dash-sites.feature | 18 |
+| **Total** | **56** |
 
-No `@le`, `@remote` or `@destructive` scenarios. Run without the known bugs: `vendor/bin/behat --tags='~@known-bug'`.
+No `@le`, `@remote` or `@destructive` scenarios. No `@known-bug` scenarios ship here: the 15 scenarios written for open bugs (DASH-1, DASH-3, DASH-4 ×2, DASH-5, DASH-7, DASH-8, DASH-9, DASH-10, DASH-11, DASH-12, DASH-13, DASH-14 ×2, REL-4) are held back until their fixes land and then return as regular scenarios.
 
 ## Bugs documented or suspected (proposed IDs for issues.md)
 

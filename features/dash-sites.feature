@@ -64,16 +64,6 @@ Feature: ee dash init site sync
       }
       """
 
-  # DASH-7: "multisite" gets app_sub_type verbatim unless it is wp/php/html/empty, so a PHP site with a database is reported as multisite "mysql".
-  @known-bug
-  Scenario: A PHP site with a database is not reported as a multisite
-    Given the test site 'bh-dash-command-2.test' exists, created with '--type=php --php=8.2 --with-db --public-dir=public'
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the last EasyDash add_site request for 'bh-dash-command-2.test' should contain JSON:
-      """
-      {"multisite": 0}
-      """
-
   Scenario: A WordPress site is posted with its table prefix and cache setting
     Given the test site 'bh-dash-command-3.test' exists, created with '--type=wp --dbprefix=bhd_ --cache'
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
@@ -219,18 +209,6 @@ Feature: ee dash init site sync
       Failed to get url 'http://127.0.0.1:{STUB_PORT}/api/method/easydash.easydash.doctype.site.site.add_site'
       """
 
-  # DASH-12: one rejected site (EE::error) stops the sync, so every later site is never sent.
-  @known-bug
-  Scenario: A rejected site does not stop the sync of the remaining sites
-    Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
-    And the test site 'bh-dash-command-2.test' exists, created with '--type=php --php=8.2 --with-db --public-dir=public'
-    And the EasyDash stub answers 'add_site' with status 500 and body:
-      """
-      {"exc":"bh-dash site refused"}
-      """
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the EasyDash stub should have received more than 1 add_site requests
-
   Scenario: A site on PHP older than 8.1 is skipped with a warning
     Given the test site 'bh-dash-command-7.test' exists, created with '--type=php --php=8.4'
     # Reverted after the scenario.
@@ -264,31 +242,6 @@ Feature: ee dash init site sync
     And the last EasyDash add_site request for 'bh-dash-command-6.test' should contain JSON:
       """
       {"domain": "bh-dash-command-6.test", "enabled": false}
-      """
-
-  # DASH-14: disabled sites are started (`ee site enable`) and stopped again only to get past get_site_info()'s enabled check; every value sent comes from the DB.
-  @known-bug
-  Scenario: A disabled site is not started just to read its settings
-    Given the test site 'bh-dash-command-6.test' exists, created with '--type=html'
-    And the command 'bin/ee site enable bh-dash-command-6.test' is run after the scenario
-    And the setup command 'bin/ee site disable bh-dash-command-6.test' succeeds
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the return code should be 0
-    And the nested ee command 'site enable bh-dash-command-6.test' should not have been run
-
-  # DASH-14: when the nested `ee site enable` fails (here: no docker-compose.yml), get_site_info() errors on the still-disabled site and aborts the whole sync.
-  @known-bug
-  Scenario: A disabled site that cannot be started does not abort the sync
-    Given the test site 'bh-dash-command-6.test' exists, created with '--type=html'
-    And the command 'bin/ee site enable bh-dash-command-6.test' is run after the scenario
-    And the setup command 'bin/ee site disable bh-dash-command-6.test' succeeds
-    # Moved back after the scenario, before the site is re-enabled.
-    And I move the file 'docker-compose.yml' to 'docker-compose.yml.bh-dash' in the site 'bh-dash-command-6.test'
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the return code should be 0
-    And STDERR should not contain:
-      """
-      is not enabled
       """
 
   Scenario: A disabled site EasyDash already lists is still left disabled

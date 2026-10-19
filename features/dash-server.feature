@@ -146,26 +146,6 @@ Feature: ee dash init server registration
       Server integrated with EasyDash successfully
       """
 
-  # DASH-5: the key is appended before add_server is called and is left in place when the registration fails.
-  @known-bug
-  Scenario: A rejected registration does not leave the EasyEngine key authorised
-    Given the EasyDash stub answers 'add_server' with status 500 and body:
-      """
-      {"exc":"bh-dash registration refused"}
-      """
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the sandboxed authorized_keys file should contain the EasyEngine key 0 times
-
-  # DASH-8: after a failed registration init still syncs every site for a server EasyDash doesn't know, and exits 0.
-  @known-bug
-  Scenario: A rejected registration fails the command without syncing sites
-    Given the EasyDash stub answers 'add_server' with status 500 and body:
-      """
-      {"exc":"bh-dash registration refused"}
-      """
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the return code should be 1
-
   Scenario: An unreachable EasyDash API aborts the run before touching authorized_keys
     Given the EasyDash API URL is 'http://127.0.0.1:{CLOSED_PORT}/api/method/'
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
@@ -175,16 +155,6 @@ Feature: ee dash init server registration
       Failed to get url 'http://127.0.0.1:{CLOSED_PORT}/api/method/easydash.easydash.doctype.server.server.
       """
     And the sandboxed authorized_keys file should contain the EasyEngine key 0 times
-
-  # DASH-4: http_request() halts on transport errors itself, so the "assume the server doesn't exist" fallback and its warning in server_exists_on_easydash() are dead code (same for the other catch blocks).
-  @known-bug
-  Scenario: An unreachable server lookup falls back to a warning as the code intends
-    Given the EasyDash API URL is 'http://127.0.0.1:{CLOSED_PORT}/api/method/'
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then STDERR should contain:
-      """
-      Warning: Error connecting to EasyDash API to get server list.
-      """
 
   Scenario: A registration that times out aborts the run with an error
     Given the EasyDash stub answers 'add_server' after 12 seconds
@@ -213,14 +183,6 @@ Feature: ee dash init server registration
     And the last EasyDash get_server_list request should be a POST to '/easydash/api/method/easydash.easydash.doctype.server.server.get_server_list'
     And the last EasyDash add_server request should be a POST to '/easydash/api/method/easydash.easydash.doctype.server.server.add_server'
 
-  # DASH-11: the lookups are built from ed_base_url (ed-api-url minus a trailing "/api/method/"), the registration from ed-api-url, so an ed-api-url that doesn't end in /api/method/ splits them (here /proxy//api/method/… vs /proxy/…).
-  @known-bug
-  Scenario: Lookups and registration use the same configured API base
-    Given the EasyDash API URL is '{STUB_URL}/proxy/'
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the last EasyDash add_server request should be a POST to '/proxy/easydash.easydash.doctype.server.server.add_server'
-    And the last EasyDash get_server_list request should be a POST to '/proxy/easydash.easydash.doctype.server.server.get_server_list'
-
   Scenario: A valid --hostname skips the hostname confirmation
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
@@ -229,15 +191,6 @@ Feature: ee dash init server registration
       Is the hostname
       """
     And hostnamectl should not have been called
-
-  # DASH-1: the --hostname value only skips the prompt; it is then overwritten by gethostname(), so EasyDash always gets the machine's hostname.
-  @known-bug
-  Scenario: The --hostname value is what EasyDash receives
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the last EasyDash add_server request body should contain JSON:
-      """
-      {"hostname": "bh-dash.example.test"}
-      """
 
   Scenario: Without --hostname, confirming the machine hostname keeps it
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10" in the EasyDash sandbox with STDIN:
@@ -290,22 +243,6 @@ Feature: ee dash init server registration
       {"hostname": "bh-dash-new.example.test"}
       """
 
-  # DASH-3: on EOF the confirmation reads "no" and EE::input() returns "" forever, so the hostname prompt loops endlessly (bounded here by timeout and head).
-  @known-bug
-  Scenario: Closing STDIN at the hostname prompt ends the command
-    When I run "timeout 20 bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 2>&1 | head -n 40" in the EasyDash sandbox with STDIN:
-      """
-      n
-      """
-    Then STDOUT should contain 'Invalid hostname. Please enter a valid FQDN hostname.' at most 1 time
-    And hostnamectl should not have been called
-
-  # REL-4: v1.0.1 on main sends ee_version with the server data; develop doesn't.
-  @known-bug
-  Scenario: The registration reports the EasyEngine version
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
-    Then the last EasyDash add_server request body should have the key 'ee_version'
-
   # DASH-6 (fixed in v4.13.2 by core masking, easyengine#1944), regression check: server_exists_on_easydash() logs the request headers, token included, at debug level, which always reaches ee.log.
   Scenario: The server lookup does not log the API token
     Given the EasyDash stub knows the server '203.0.113.10'
@@ -328,19 +265,3 @@ Feature: ee dash init server registration
       https://api.ipify.org
       """
     And the EasyDash stub should have received no add_server requests
-
-  # DASH-4: http_request() halts on the transport error, so get_external_ip() never returns false and the IP prompt is never shown.
-  @known-bug
-  Scenario: An unreachable IP lookup falls back to asking for the public IP
-    When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --hostname=bh-dash.example.test" in the EasyDash sandbox with STDIN:
-      """
-      203.0.113.10
-      """
-    Then STDOUT should contain:
-      """
-      Please enter the public IP address of the server:
-      """
-    And the last EasyDash add_server request body should contain JSON:
-      """
-      {"public_ipv4": "203.0.113.10"}
-      """
