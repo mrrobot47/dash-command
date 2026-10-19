@@ -116,8 +116,8 @@ Legend: ✔ covered, ✘ not covered (reason), KB = `@known-bug` scenario that f
 
 | Item | Covered by |
 |---|---|
-| API token not logged by the server lookup's debug line | KB DASH-6 (`"Token":"…"` in `ee.log`) |
-| API token not written to `ee.log` at all | KB LOG-1 (argv logging in core) |
+| API token not logged by the server lookup's debug line | regular: DASH-6 (`"Token":"…"` in `ee.log`), masked by core since v4.13.2 (easyengine#1944) |
+| API token not written to `ee.log` at all | regular: LOG-1 (argv logging in core), fixed in v4.13.2 |
 | HTTP auth password not printed by the "Existing auths" log line | ✔ HTTP auth scenario (models serialise to `{}`, so nothing leaks today) |
 
 **Estimate:** 65 of the 71 inventory rows are exercised (≈92%); 9 of them only through `@known-bug` scenarios that fail until the bug is fixed, and several covered rows carry an extra KB check. The 6 uncovered rows (plus multisite `subdom`) are listed above with reasons.
@@ -144,7 +144,7 @@ No `@le`, `@remote` or `@destructive` scenarios. Run without the known bugs: `ve
 | DASH-3 | `init()` L109–115 | The FQDN prompt loops forever when STDIN is closed (`EE::input()` returns `""` on EOF), flooding warnings. Any non-interactive run without a valid `--hostname` hits it, since the confirmation also reads EOF as "no" (e.g. EasyDash firing init over SSH without `--hostname`). | KB |
 | DASH-4 | all `try/catch (\RuntimeException)` blocks | `http_request()` defaults to `halt_on_error`, so transport errors call `EE::error()` inside it; the transport-error fallbacks ("assume the server doesn't exist", `get_external_ip()` → IP prompt) and the "Error connecting to EasyDash API…" messages are dead code. | KB (API lookup, IP lookup) |
 | DASH-5 | `init()` L127–130 | The EasyDash root SSH key is appended before `add_server` and stays authorised when registration fails. `/root/.ssh` is hard-coded and a missing dir fails silently. | KB |
-| DASH-6 | `server_exists_on_easydash()` L325–326 | The request headers, including the API token, are logged at debug level, which always goes to `ee.log` (on top of LOG-1's argv logging). | KB |
+| DASH-6 | `server_exists_on_easydash()` L325–326 | The request headers, including the API token, are logged at debug level, which always goes to `ee.log` (on top of LOG-1's argv logging). | masked by core since v4.13.2 (the debug line remains, with the token as `******`) |
 | DASH-7 | `init()` L247–251 | `multisite` is `app_sub_type` unless it is wp/php/html/empty, so PHP sites with a DB are sent as `"mysql"`. | KB |
 | DASH-8 | `init()` L149–155 | A failed `add_server` only warns; the run syncs all sites for a server EasyDash doesn't know and exits 0. | KB |
 | DASH-9 | docblock | The only example (`ee dash init --api=xxx`) omits the required `--org`. | KB |
