@@ -136,16 +136,6 @@ class FeatureContext implements Context
 	}
 
 	/**
-	 * @When I create subsite :subsite in :site
-	 */
-	public function iCreateSubsiteInOfType($subsite, $site )
-	{
-		$php_container = implode( explode( '.', $subsite ) ) . '_php_1';
-
-		EE::launch( "docker exec -it --user='www-data' $php_container sh -c 'wp site create --slug=$site'", false, true );
-	}
-
-	/**
 	 * @Then return value should be 0
 	 */
 	public function returnValueShouldBe0()
@@ -412,7 +402,7 @@ class FeatureContext implements Context
 		$result = EE::launch( "docker ps -qf label=$label_string | wc -l", false, true );
 		$running_containers = (int) trim($result->stdout);
 
-		if($expected_running_containers === $running_containers) {
+		if ( (int) $expected_running_containers !== $running_containers ) {
 			throw new Exception("Expected $expected_running_containers running containers. Found: $running_containers");
 		}
 	}
