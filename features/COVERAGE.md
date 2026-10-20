@@ -65,7 +65,7 @@ Legend: ✔ covered, ✘ not covered (reason), KB = known bug whose scenario is 
 | `get_server_list`: POST path, headers, body | ✔ dash-server: "The server lookup posts…" |
 | Server already listed → skip registration, no SSH key | ✔ dash-server: "A server already known…" |
 | Server list with other IPs / non-2xx / non-JSON → register | ✔ dash-server: three scenarios |
-| API unreachable (connection refused) | ✔ dash-server: "An unreachable EasyDash API aborts…"; KB (the intended warning fallback is dead code) |
+| API unreachable (connection refused) | ✔ dash-server: "An unreachable EasyDash API fails the run"; KB (the intended warning fallback is dead code) |
 | SSH key appended to `/root/.ssh/authorized_keys`, existing lines kept, not duplicated | ✔ dash-server: three scenarios (sandboxed file) |
 | `add_server`: POST path, headers, payload (`hostname`, `public_ipv4`, `organization`) | ✔ dash-server: "A new server is registered…" |
 | `add_server` payload `ee_version` | ✘ not covered yet: only on the `main` branch, not on `develop` (its scenario comes back once `develop` has it) |
