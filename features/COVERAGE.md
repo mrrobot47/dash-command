@@ -10,12 +10,12 @@ Suite for `ee dash` (EasyDash integration), based on `upstream/develop` (`83f20d
 - **Private mount namespace:** `When I run … in the EasyDash sandbox` runs the command under `unshare --mount --propagation private`, with a scratch dir bind-mounted over `/root/.ssh` and a recording shim bind-mounted over `hostnamectl` (also first on PATH). The real `authorized_keys` and hostname are never touched; the scenarios assert on the sandboxed copies. The sandbox script checks each bind mount with `-ef` and then writes a marker file; a run without the marker (e.g. `unshare` itself failed with EPERM, which exits 1 like a validation error) fails the step instead of passing vacuously. Private propagation keeps the mounts off the host even when `/` is a shared mount (verified in a privileged container with `/` made rshared). The only host-side write is creating an empty `/root/.ssh` (0700) as a mount point when it is missing.
 - **Non-test sites guard:** every sandboxed run first checks the sites table and refuses to run (the step fails, nothing is executed) when any site outside `bh-dash-command-*` exists.
 - **PATH shims:** `ee` → the checkout's `bin/ee` (init shells out to plain `ee` for `site enable/disable` and `ee shell`; without the shim that would be the installed stable phar) with every nested call logged; `lsb_release` → a fake distribution when a scenario asks for one.
-- **STDIN:** every sandboxed run gets an explicit STDIN (empty or the scenario's text), since `run-behat.sh` runs Behat under `script` (a pty) and init prompts.
+- **STDIN:** every sandboxed run gets an explicit STDIN (empty or the scenario's text), since Behat may run under a pty (for example `script`) and init prompts.
 - `--ip` is always passed: the auto-detection calls `https://api.ipify.org`, which has no config knob (see gaps).
 
 ## Environment requirements
 
-- Root, `unshare`/`mount` with `CAP_SYS_ADMIN` (plain host run, as `run-behat.sh` does), and a free local port.
+- Root, `unshare`/`mount` with `CAP_SYS_ADMIN` (a plain host run), and a free local port.
 - **No non-test sites on the host.** `ee dash init` walks *all* sites (`Site::all()`): it would `ee site enable`/`disable` other people's disabled sites, run `ee shell` in WP/`latest` sites, and post them to the stub. The context enforces this (see the guard above): with a foreign site present, every sandboxed scenario fails before running anything.
 - Fixture sites: `bh-dash-command-1.test` … `bh-dash-command-8.test` (plus aliases `bh-dash-command-5-alias.test`, `bh-dash-command-5-alt.test`). `@AfterFeature` deletes only sites whose name starts with `bh-dash-command-` (the upstream context deleted every site; fixed here).
 - No `@le`, `@remote` or `@destructive` scenarios: nothing needs public DNS, rclone or global state. The only shared files read are `/opt/easyengine/logs/ee.log` (read-only) and the sites DB (`php_version` of `bh-dash-command-7.test` is tweaked in one scenario).
