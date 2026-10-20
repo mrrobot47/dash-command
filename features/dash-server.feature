@@ -28,7 +28,7 @@ Feature: ee dash init server registration
       {"organization": "bh-dash-org"}
       """
 
-  # --hostname is the machine name, so the payload is the same with and without the DASH-1 fix.
+  # --hostname is the machine name, so the payload is the same whether or not `--hostname` is still discarded.
   Scenario: A new server is registered, the EasyEngine key is authorised and the run stops there
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname={HOSTNAME}" in the EasyDash sandbox
     Then the return code should be 0
@@ -127,7 +127,7 @@ Feature: ee dash init server registration
     Then the return code should be 0
     And the EasyDash stub should have received 1 add_server request
 
-  # The exit code is asserted by the DASH-8 scenario below.
+  # The exit code is left to a held-back scenario: a failed add_server only warns and the run exits 0.
   Scenario: A rejected registration is reported with the response body and status
     Given the EasyDash stub answers 'add_server' with status 500 and body:
       """
@@ -244,14 +244,14 @@ Feature: ee dash init server registration
       {"hostname": "bh-dash-new.example.test"}
       """
 
-  # DASH-6 (fixed in v4.13.2 by core masking, easyengine#1944), regression check: server_exists_on_easydash() logs the request headers, token included, at debug level, which always reaches ee.log.
+  # Fixed in v4.13.2 by core masking (EasyEngine/easyengine#1944), regression check: server_exists_on_easydash() logs the request headers, token included, at debug level, which always reaches ee.log.
   Scenario: The server lookup does not log the API token
     Given the EasyDash stub knows the server '203.0.113.10'
     When I run "bin/ee dash init --api=bh-dash-secret-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox
     Then the return code should be 0
     And the file '/opt/easyengine/logs/ee.log' should not contain '"Token":"bh-dash-secret-{RUN_ID}"'
 
-  # LOG-1 (fixed in v4.13.2), regression check: core used to log the full argv at debug level, so --api=<token> landed in ee.log.
+  # Fixed in v4.13.2 (EasyEngine/easyengine#1944), regression check: core used to log the full argv at debug level, so --api=<token> landed in ee.log.
   Scenario: The API token is not written to ee.log at all
     Given the EasyDash stub knows the server '203.0.113.10'
     When I run "bin/ee dash init --api=bh-dash-secret-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname=bh-dash.example.test" in the EasyDash sandbox

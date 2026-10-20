@@ -5,7 +5,7 @@ Feature: ee dash init site sync
     Given an EasyDash stub is running
     And the EasyDash stub knows the server '203.0.113.10'
 
-  # --hostname is the machine name, so the payload is the same with and without the DASH-1 fix.
+  # --hostname is the machine name, so the payload is the same whether or not `--hostname` is still discarded.
   Scenario: An HTML site with self-signed SSL is posted with its details
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
     When I run "bin/ee dash init --api=bh-dash-{RUN_ID} --org=bh-dash-org --ip=203.0.113.10 --hostname={HOSTNAME}" in the EasyDash sandbox
@@ -188,7 +188,7 @@ Feature: ee dash init site sync
       """
     And the EasyDash stub should have received 1 add_site request for 'bh-dash-command-1.test'
 
-  # Whether the remaining sites are still sent is asserted by the DASH-12 scenario below.
+  # Whether the remaining sites are still sent is left to a held-back scenario: one rejected site stops the sync today.
   Scenario: A rejected site is reported with the response body and fails the command
     Given the test site 'bh-dash-command-1.test' exists, created with '--type=html --ssl=self'
     And the test site 'bh-dash-command-2.test' exists, created with '--type=php --php=8.2 --with-db --public-dir=public'
